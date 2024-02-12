@@ -1,4 +1,4 @@
-# GulouSchedule
+# GulouClass
 Class schedule for Gulou Hospital
 
 # A breif introduction
