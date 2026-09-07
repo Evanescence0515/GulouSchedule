@@ -1,376 +1,254 @@
-from . import ScreenManager, Screen, SlideTransition, App, Screen, datetime,\
-    Button, GridLayout, LabelBase, BoxLayout, Label, DropDown,\
-    FileChooserListView, Popup, Window, os, excel2dict, timedelta
+"""Responsive weekly timetable; existing import entry points are retained."""
+import csv
+from datetime import datetime, timedelta
+from pathlib import Path
+from assets.func.schedule_model import parse_row, practice_time_justice
+from assets.func.schedule_store import load_snapshot
+from .theme import theme
+from .ui_widgets import RoundedButton, ThemeBox, label, toolbar
+from kivy.clock import Clock
+from kivy.graphics import Color, Line, Rectangle
+from kivy.metrics import dp
+from kivy.uix.boxlayout import BoxLayout
+from kivy.uix.dropdown import DropDown
+from kivy.uix.floatlayout import FloatLayout
+from kivy.uix.popup import Popup
+from kivy.uix.screenmanager import Screen, SlideTransition
+from kivy.uix.scrollview import ScrollView
+from kivy.utils import escape_markup
 
-from . import current_file_path, data_file_path, col_file_path,\
-    chinese_font_path, window_width, window_height, current_date,\
-    Button_color, Popup_color_background, header_color
+CONF_DIR = Path(__file__).resolve().parents[1] / 'assets' / 'conf'
+DAYS = ['周一', '周二', '周三', '周四', '周五', '周六', '周日']
 
-from . import MyWidget
 
 class FirstScreen(Screen):
+    gutter, row_height = dp(36), dp(76)
+
     def __init__(self, **kwargs):
-        super(FirstScreen, self).__init__(**kwargs)
-        # 读取已有的数据1，如果没有，则放弃读取，设置当前周数为1
-        try:
-            with open(os.path.join(os.path.dirname(current_file_path),"..","assets", "conf", "cache_data.txt"),"r",encoding='utf-8') as f:
-                self.start_date=datetime.strptime(f.readlines()[0],"%Y-%m-%d")
-                self.week_number = int(((current_date-self.start_date).days+self.start_date.weekday())/7)+1
-        except IOError:
-            self.week_number=1
-        except:
-            print("初始化失败")
-            self.week_number=1
-        #初始化数据
-        self.buttons = []
-        self.weekday_number = current_date.weekday()
-        # 获取当前所在周数的日期
-        result_dates = self.get_week_dates(current_date)
-
-        # 分屏
-        root_layout = BoxLayout(orientation='vertical')
-        # 一级分屏1
-        layPart1 = BoxLayout(orientation='horizontal', size_hint=(1, 0.08),pos_hint={"x":0,"y":0.9})
-        layPart1.set_color(Button_color)
-        # 二级分屏1.0
-        layPart1_0=BoxLayout(orientation='vertical', size_hint=(0.15, 1))
-        # 周数的选择
-        weekButton = Button(text='Weeks', size_hint=(1, 1))
-        weekButton.color=(1,1,1,1)
-        weekButton.background_color=header_color
-        weekButton.bind(on_release=self.show_dropdown)
-
-        layPart1_0.add_widget(weekButton)
-
-
-        # 二级分屏1.1
-        layPart1_1=BoxLayout(orientation='vertical', size_hint=(0.85, 1),pos_hint={"x":0.1,"y":0})
-        header_label = Label(text="鼓楼课表", font_size='25sp', font_name='chinese_font')
-        header_label.color=(1,1,1,1)
-        header_label.set_color(header_color)
-
-        layPart1_1.add_widget(header_label)
-
-
-        # 二级分屏1.2
-        layPart1_2=BoxLayout(orientation='vertical', size_hint=(0.15, 1),pos_hint={"x":0.9,"y":0})
-        # 数据导入的标签
-        btn = Button(text="工具",size_hint=(1, 1), size=(1,1),font_name='chinese_font')
-        btn.color=(1,1,1,1)
-        btn.background_color=header_color
-        btn.bind(on_press=self.switch_to_second_screen)
-
-        layPart1_2.add_widget(btn)
-        layPart1.add_widget(layPart1_0)# end 二级分屏1.0
-        layPart1.add_widget(layPart1_1)# end 二级分屏1.1
-        layPart1.add_widget(layPart1_2)# end 二级分屏1.2
-        
-        # 一级分屏2
-        #layPart2 = BoxLayout(orientation='horizontal', size_hint=(1, 0.2),pos_hint={"x":0.6,""})
-        #header_label = Label(text="Your date data", font_size=20, font_name='chinese_font')
-        #layPart2.add_widget(header_label)
-        
-        # 一级分屏3
-        layPart3 = BoxLayout(orientation='horizontal', size_hint=(1, 0.9))
-
-        grid_layout = MyWidget.Background_GridLayout(cols=8, rows=13, spacing=(2, 0), padding=0)
-
-        # 从文件中读取数据
-        data = self.read_data_from_file(data_file_path)
-        self.config_row=["周一","周二","周三","周四","周五","周六","周日"]
-        config_col=range(1,13)
-
-        # 向 GridLayout 中添加按钮，每个按钮表示一个方格
-        self.weekday_buttons=[]
-        for row in range(0,13):
-            for col in range(0,8):
-                if row==0 and col==0:
-                    button = Button(text=current_date.strftime('%m-%d'), halign='center', valign='center',text_size=(window_width/8,window_height*0.9/13),font_size="15sp",font_name='chinese_font') 
-                    button.color=(0,0,0,1)
-                    button.border=(10,10,10,10)
-                    grid_layout.add_widget(button)
-                elif row==0:
-                    if col-1==self.weekday_number:
-                        button = Button(text=self.config_row[col-1]+"\n"+result_dates[col-1][-5:], halign='center', valign='center',text_size=(window_width/8,window_height*0.9/13),font_size="15sp",font_name='chinese_font')  # 初始文本为空，设置字体大小
-                        grid_layout.add_widget(button)
-                        button.border=(0,10,10,0)
-                        button.color=(0,0,0,1)
-                        self.weekday_buttons.append(button)
-                    else:
-                        button = Button(text=self.config_row[col-1]+"\n"+result_dates[col-1][-5:], halign='center', valign='center',text_size=(window_width/8,window_height*0.9/13), font_size="15sp",font_name='chinese_font')  # 初始文本为空，设置字体大小
-                        grid_layout.add_widget(button)
-                        button.border=(0,10,10,0)
-                        button.color=(0,0,0,1)
-                        self.weekday_buttons.append(button)
-                elif col==0:
-                    button = Button(text=str(config_col[row-1]), halign='center', valign='center',text_size=(window_width/8,window_height*0.9/13),font_size="20sp",font_name='chinese_font')  # 初始文本为空，设置字体大小
-                    button.border=(0,0,0,0)
-                    button.color=(0,0,0,1)
-                    grid_layout.add_widget(button)
-                else:
-                    button = Button(disabled=True,text=data[row-1][col-1],halign='center',  valign='center',text_size=(window_width/8,window_height*0.9/13), font_size="10sp",font_name='chinese_font',background_normal="",background_disabled_normal='')  # 初始文本为空，设置字体大小
-                    button.color=(0,0,0,0.8)
-                    button.additional_info = ["课程信息",'无信息']
-                    button.disabled_color=(0,0,0,0.8)
-    
-                    button.bind(on_press=self.on_button_press)  # 绑定按钮点击事件
-                    grid_layout.add_widget(button)
-                    self.buttons.append(button)
-
+        super().__init__(**kwargs)
+        self.refresh()
+        self.entries, self.period_labels = [], []
+        root = ThemeBox(orientation='vertical', padding=dp(16), spacing=dp(8))
+        top, self.toolbar_button = toolbar('鼓楼课表', '工具', self.switch_to_second_screen)
+        root.add_widget(top)
+        nav = BoxLayout(size_hint_y=None, height=dp(42), spacing=dp(6))
+        self.previous = RoundedButton(text='<', size_hint_x=None, width=dp(36))
+        self.previous.bind(on_release=lambda *_: self.updata_button_text_according2week(self.week_number - 1))
+        self.week_button = RoundedButton(fill_role='soft', text_role='accent')
+        self.week_button.bind(on_release=self.show_dropdown)
+        next_button = RoundedButton(text='>', size_hint_x=None, width=dp(36))
+        next_button.bind(on_release=lambda *_: self.updata_button_text_according2week(self.week_number + 1))
+        home = RoundedButton(text='回到本周', size_hint_x=None, width=dp(92), fill_role='surface')
+        home.bind(on_release=lambda *_: self.updata_button_text_according2week(self.current_week()))
+        for item in (self.previous, self.week_button, next_button, home):
+            nav.add_widget(item)
+        root.add_widget(nav)
+        self.summary = label(size_hint_y=None, height=dp(28), halign='left')
+        self.summary.color_role = 'muted'
+        self.summary.bind(size=lambda w, v: setattr(w, 'text_size', v))
+        root.add_widget(self.summary)
+        self.header_scroll = ScrollView(size_hint_y=None, height=dp(56), do_scroll_y=False, do_scroll_x=False, bar_width=0)
+        self.header = BoxLayout(size_hint_x=None)
+        self.header.add_widget(label('节次', size_hint_x=None, width=self.gutter))
+        self.weekday_buttons = []
+        for _ in DAYS:
+            item = RoundedButton(font_size='13sp', disabled=True, halign='center', disabled_text_alpha=1)
+            self.weekday_buttons.append(item)
+            self.header.add_widget(item)
+        self.header_scroll.add_widget(self.header)
+        root.add_widget(self.header_scroll)
+        self.scroll = ScrollView(bar_width=dp(3), scroll_type=['bars', 'content'])
+        self.table = FloatLayout(size_hint=(None, None), height=self.row_height * 12)
+        self.scroll.add_widget(self.table)
+        self.scroll.bind(width=self.resize_table, scroll_x=lambda w, v: setattr(self.header_scroll, 'scroll_x', v))
+        self.table.bind(pos=self.arrange, size=self.arrange)
+        root.add_widget(self.scroll)
+        self.add_widget(root)
+        theme.bind(name=self._apply_theme)
         self.updata_button_text_according2week(self.week_number)
 
-        layPart3.add_widget(grid_layout)
+    def _apply_theme(self, *args):
+        self.arrange()
 
-        root_layout.add_widget(layPart1)
-        #root_layout.add_widget(layPart2)
-        root_layout.add_widget(layPart3)
+    def resize_table(self, *args):
+        self.table.width = self.header.width = max(self.scroll.width, dp(568))
+        self.header_scroll.scroll_x = self.scroll.scroll_x
 
-        self.add_widget(root_layout)
+    def arrange(self, *args):
+        table = self.table
+        column = (table.width - self.gutter) / 7
+        table.canvas.before.clear()
+        with table.canvas.before:
+            Color(*theme.color('surface'))
+            Rectangle(pos=table.pos, size=table.size)
+            if getattr(self, 'today_column', -1) >= 0:
+                Color(*theme.color('today'))
+                Rectangle(pos=(table.x + self.gutter + column * self.today_column, table.y), size=(column, table.height))
+            Color(*theme.color('line'))
+            for row in range(13):
+                y = table.top - row * self.row_height
+                Line(points=[table.x, y, table.right, y], width=1)
+            for col in range(8):
+                x = table.x + self.gutter + column * col
+                Line(points=[x, table.y, x, table.top], width=1)
+        for widget, day, start, end in self.entries:
+            widget.pos = (table.x + self.gutter + day * column + dp(3), table.top - end * self.row_height + dp(3))
+            widget.size = (column - dp(6), (end - start + 1) * self.row_height - dp(6))
+            widget.text_size = (widget.width - dp(12), widget.height - dp(14))
+        for period, widget in enumerate(self.period_labels, 1):
+            widget.pos = (table.x, table.top - period * self.row_height)
+            widget.size = (self.gutter, self.row_height)
 
+    def refresh(self):
+        self.has_calendar = True
+        self.snapshot = None
+        self.cache_error = False
+        try:
+            self.snapshot = load_snapshot(CONF_DIR)
+        except (OSError, ValueError, KeyError, TypeError):
+            self.cache_error = True
+        try:
+            start = self.snapshot['start_date'] if self.snapshot else (CONF_DIR / 'cache_data.txt').read_text(encoding='utf-8').strip()
+            self.start_date = datetime.strptime(start, '%Y-%m-%d')
+        except (OSError, ValueError):
+            self.start_date = datetime.now().replace(hour=0, minute=0, second=0, microsecond=0)
+            self.has_calendar = False
+        self.week_number = self.current_week()
 
-        
+    def current_week(self):
+        monday = self.start_date - timedelta(days=self.start_date.weekday())
+        return max(1, (datetime.now().date() - monday.date()).days // 7 + 1)
 
-    week="1"
-    # 周数的下拉菜单
     def show_dropdown(self, button):
-        dropdown = DropDown()
-        options = ["第{}周".format(week) for week in range(1, 26)]
-
-        for option_text in options:
-            btn_week = Button(text=option_text, size_hint_y=None, height="30sp",font_name='chinese_font')
-            btn_week.bind(on_release=lambda btn, option=option_text: self.on_option_select(self.week,option[1:-1]))
-            dropdown.add_widget(btn_week)
-
-        # Attach the dropdown to the button and open it
+        dropdown = DropDown(max_height=dp(300))
+        weeks = [int(p.stem[12:]) for p in CONF_DIR.glob('internetData[0-9]*.txt') if p.stem[12:].isdigit()]
+        if self.snapshot:
+            weeks = [int(week) for week in self.snapshot['weeks']]
+        for week in range(1, max([25, self.week_number, self.current_week()] + weeks) + 1):
+            item = RoundedButton(text='第 {} 周{}'.format(week, ' · 本周' if week == self.current_week() else ''), size_hint_y=None, height=dp(44), fill_role='surface')
+            item.bind(on_release=lambda _, n=week: dropdown.select(n))
+            dropdown.add_widget(item)
+        dropdown.bind(on_select=lambda _, n: self.updata_button_text_according2week(n))
         dropdown.open(button)
 
-
-    def on_option_select(self, label, option):#label是要修改的部分, 后续这个将会被改成我grid里面的所有数值, option是选择的周数
-        # This method is called when an option is selected from the dropdown
-        self.week_number=int(option)
-        self.updata_button_text_according2week(self.week_number)
-
-    def read_data_from_file(self, filename):
-        data = []
+    def updata_button_text_according2week(self, week=1):
+        self.week_number = max(1, int(week))
+        self.previous.disabled = self.week_number == 1
+        self.week_button.text = '第 {} 周'.format(self.week_number)
+        monday = self.start_date - timedelta(days=self.start_date.weekday()) + timedelta(weeks=self.week_number - 1)
+        self.today_column = -1
+        for index, item in enumerate(self.weekday_buttons):
+            date = monday + timedelta(days=index)
+            today = date.date() == datetime.now().date()
+            item.text = '{}\n{}'.format('今天' if today else DAYS[index], date.strftime('%m/%d'))
+            item.fill_role = 'accent' if today else 'background'
+            item.text_role = 'on_accent' if today else 'muted'
+            item.apply_theme()
+            if today:
+                self.today_column = index
+        self.date_range = '{} — {}'.format(monday.strftime('%m.%d'), (monday + timedelta(days=6)).strftime('%m.%d'))
+        courses, invalid = [], 0
         try:
-            with open(filename, 'r', encoding='utf-8') as file:
-                for line in file:
-                    row_data = line.strip().split(',')
-                    data.append(row_data)
-        except Exception as e:
-            print(f"Error reading data from file: {e}")
+            if self.snapshot is not None:
+                rows = self.snapshot['weeks'].get(str(self.week_number), [])
+            else:
+                with (CONF_DIR / 'internetData{}.txt'.format(self.week_number)).open(encoding='utf-8', newline='') as stream:
+                    rows = list(csv.reader(stream))
+            for row in rows:
+                try:
+                    courses.extend(self.parse_row(row))
+                except (ValueError, IndexError, KeyError, TypeError, AttributeError):
+                    invalid += 1
+        except OSError:
+            pass
+        self.render_courses(courses)
+        if invalid:
+            self.summary.text += ' · {} 条数据待检查'.format(invalid)
+        if self.cache_error:
+            self.summary.text += ' · 新课表缓存异常，请重新导入'
 
-        return data
+    parse_row = staticmethod(parse_row)
+
+    def render_courses(self, courses):
+        self.table.clear_widgets()
+        self.entries, self.period_labels, self.buttons = [], [], []
+        for period in range(1, 13):
+            item = label('{:02d}'.format(period), size_hint=(None, None))
+            item.color_role = 'muted'
+            self.period_labels.append(item)
+            self.table.add_widget(item)
+        groups = []
+        for course in sorted(courses, key=lambda c: (c['day'], c['start'], c['end'])):
+            if groups and groups[-1]['day'] == course['day'] and course['start'] <= groups[-1]['end']:
+                groups[-1]['end'] = max(groups[-1]['end'], course['end'])
+                groups[-1]['courses'].append(course)
+            else:
+                groups.append(dict(day=course['day'], start=course['start'], end=course['end'], courses=[course]))
+        for group in groups:
+            course = group['courses'][0]
+            extra = '\n另有 {} 门重叠课程'.format(len(group['courses']) - 1) if len(group['courses']) > 1 else ''
+            text = '[b]{}[/b]\n\n[color=536071]{}[/color]{}'.format(escape_markup(course['title']), escape_markup(course['place']), extra)
+            if group['start'] == group['end']:
+                hint = '{} 门重叠课程'.format(len(group['courses'])) if extra else '点击详情'
+                text = '[b]{}[/b]\n[color=536071]{}[/color]'.format(escape_markup(course['title']), hint)
+            card = RoundedButton(course_key=course['title'], size_hint=(None, None), font_size='13sp', halign='left', valign='top', markup=True, text=text)
+            card.additional_info = [course['title'] if not extra else '重叠课程', '\n\n────────────\n\n'.join(c['title'] + '\n\n' + c['detail'] for c in group['courses'])]
+            card.bind(on_release=self.on_button_press)
+            self.table.add_widget(card)
+            self.entries.append((card, group['day'], group['start'], group['end']))
+            self.buttons.append(card)
+        self.summary.text = '{} · {} 门课程'.format(self.date_range, len(courses))
+        if not courses:
+            self.summary.text = self.date_range + (' · 本周暂无课程' if self.has_calendar else ' · 尚未导入课表，请前往工具导入')
+        self.resize_table()
+        self.arrange()
+
+    practice_time_justice = staticmethod(practice_time_justice)
 
     def update_buttons_text(self, data):
-        with open(col_file_path) as f:
-            color_list=f.readlines()
-
-        for i in range(len(self.buttons)):
-            self.buttons[i].text= ''  # 初始文本为空，设置字体大小
-            self.buttons[i].background_color = (1, 1, 1, 1)
-            self.buttons[i].additional_info = ["课程信息",'无信息']
-
-        if self.week_number in data.keys():
-            # 更新按钮的文本
-            data=data[self.week_number]
-            chinese2num={'一': 1,'二': 2, '三': 3,'四': 4,'五': 5,'六': 6,'日': 7,}
-            col_c=0
-
-            for i in data:
-                for j in i["时间（见习课）"]:
-                    col_c+=1
-
-                    coun=chinese2num[i["星期"]]-1+int(j[0])*7
-                    self.buttons[coun].text="\n".join([i["科目"],i["地点（见习课）"],"组别"+j[1:]])
-                    col_rbga=color_list[col_c].split(",")
-                    col_rbga=list(map(lambda x:int(x)/255,col_rbga[0:3]))
-                    col_rbga.append(0.9)
-                    self.buttons[coun].background_color = col_rbga
-                    self.buttons[coun+7].background_color = col_rbga
-                    output_string = '\n'.join([f"{key}: {', '.join(value) if isinstance(value, list) else value}" for key, value in i.items()])
-                    self.buttons[coun].additional_info = [i["科目"],output_string]
-                    self.buttons[coun+7].additional_info =[i["科目"],output_string]
-
-    def updata_button_text_according2data(self,data):
-        with open(col_file_path) as f:
-            color_list=f.readlines()
-
-        for i in range(len(self.buttons)):
-            self.buttons[i].text= ''  # 初始文本为空，设置字体大小
-            self.buttons[i].background_color = (1, 1, 1, 1)
-            self.buttons[i].additional_info = ["课程信息",'无信息']
-
-
-    def updata_button_text_according2week(self,week=1):
-        with open(col_file_path) as f:
-            color_list=f.readlines()
-
-        for i in range(len(self.buttons)):
-            self.buttons[i].text= ''  # 初始文本为空，设置字体大小
-            self.buttons[i].background_color = (1, 1, 1, 1)
-            self.buttons[i].additional_info = ["课程信息",'无信息']
-            self.buttons[i].disabled=True
-        # 改变抬头
-
-        result_dates = self.get_week_dates(self.start_date+timedelta(days=7*week-7))
-        for i in range(len(self.weekday_buttons)):
-            self.weekday_buttons[i].text=self.config_row[i]+"\n"+result_dates[i][-5:]  # 初始文本为空，设置字体大小
-
-        col_c=0
-        try:
-            chinese2num={'一': 1,'二': 2, '三': 3,'四': 4,'五': 5,'六': 6,'日': 7,}
-            with open(os.path.join(os.path.dirname(current_file_path),"..","assets", "conf", "internetData"+str(week)+".txt"),"r",encoding='utf-8') as f:
-                a_cache=f.readlines()
-                for i in a_cache:
-                    list_cache=i.split(",")
-                    col_rbga=color_list[col_c].split(",")
-                    col_rbga=list(map(lambda x:int(x)/255,col_rbga[0:3]))
-                    col_rbga.append(0.9)
-                    if list_cache[5]!="None":
-                        classTime_cache=list_cache[5].split("-")
-
-                        for j in range(int(classTime_cache[0]),int(classTime_cache[1])+1):
-                            if j==int(classTime_cache[0]):
-                                coun=chinese2num[list_cache[4]]-1+(int(j)-1)*7
-                                self.buttons[coun].text="\n".join([list_cache[2],list_cache[10]])
-                            else:
-                                coun=chinese2num[list_cache[4]]-1+(int(j)-1)*7
-                            self.buttons[coun].background_color = col_rbga
-                            output_string = '\n'.join(['授课老师: '+list_cache[8],"授课地点: "+list_cache[10],"授课内容:"+list_cache[7]])
-                            self.buttons[coun].additional_info = [list_cache[2],output_string]
-                            self.buttons[coun].disabled=False
-                    if list_cache[11]!="None":
-                        classTime_cache=self.practice_time_justice(list_cache[11])
-                        #这是全天的课程，绷不住了
-                        if classTime_cache[0]=="全天":
-                            coun=chinese2num[list_cache[4]]-1
-                            self.buttons[coun].text="\n".join([list_cache[2],list_cache[15]])
-                            output_string = '\n'.join(["实践课:",list_cache[13],list_cache[15],list_cache[12]])
-                            for k in range(0,12):
-                                self.buttons[coun+7*k].additional_info = [list_cache[2],output_string]
-                                self.buttons[coun+7*k].background_color = col_rbga
-                                self.buttons[coun+7*k].disabled=False
-                        else:
-                            for k in classTime_cache:
-                                coun=chinese2num[list_cache[4]]-1+(k[0])*7
-                                self.buttons[coun].text="\n".join([list_cache[2],list_cache[15]])
-                                self.buttons[coun].background_color = col_rbga
-                                self.buttons[coun+7].background_color = col_rbga
-                                output_string = '\n'.join(["实践课:","授课老师: "+list_cache[13],"授课地点: "+list_cache[15].rstrip(),"授课内容: "+list_cache[12]])
-                                self.buttons[coun].additional_info = [list_cache[2],output_string]
-                                self.buttons[coun].disabled=False
-                                self.buttons[coun+7].additional_info =[list_cache[2],output_string]
-                                self.buttons[coun+7].disabled=False
-                    col_c+=1
-                del a_cache
-        except IOError:
-            print("超出课程周数")
-            for i in range(len(self.buttons)):
-                self.buttons[i].text= ''  # 初始文本为空，设置字体大小
-                self.buttons[i].background_color = (1, 1, 1, 1)
-                self.buttons[i].additional_info = ["课程信息",'无信息']
-                self.buttons[i].disabled=True
-
-
-    def practice_time_justice(self,time):
-        time=time.split("、")
-        classTime_list=[]
-        for j in time:
-            if j=="全天":# 为什么有人会输入全天?有没有点武德了
-                return ["全天",'']
-            if j[-1].isdigit()==1:
-                if len(j)==4:
-                    t_time=(int(j[0:1])-8)
-                    classTime_list.append([t_time,""])
-                else:
-                    if j[0:2]<='12':
-                        t_time=(int(j[0:2])-8)
-                        classTime_list.append([t_time,''])
-                    elif j[0:2]>'12' and j[0:2]<'18':
-                        t_time=(int(j[0:2])-14)+4
-                        classTime_list.append([t_time,''])
-                    elif j[0:2]>'18':
-                        t_time=8
-                        classTime_list.append([t_time,''])
-            else:   
-                if j[1].isdigit()==0:
-                    t_time=(int(j[0:1])-8)
-                    classTime_list.append([t_time,j[4:]])
-                elif j[0:2]<='12':
-                    t_time=(int(j[0:2])-8)
-                    classTime_list.append([t_time,j[5:]])
-                elif j[0:2]>'12' and j[0:2]<'18':
-                    t_time=(int(j[0:2])-14)+4
-                    classTime_list.append([t_time,j[5:]])
-                elif j[0:2]>'18':
-                    t_time=8
-                    classTime_list.append([t_time,j[5:]])
-        return classTime_list
-        
-
-    def switch_to_second_screen(self, instance):
-        # 获取屏幕管理器
-        screen_manager = App.get_running_app().root
-        self.manager.transition = SlideTransition(direction="left")
-        # 切换到第二个屏幕
-        screen_manager.current = 'second'
-
+        courses = []
+        for row in data.get(self.week_number, []):
+            for slot in row['时间（见习课）']:
+                start = int(slot[0]) + 1
+                courses.append(dict(day='一二三四五六日'.index(row['星期']), start=start, end=start + 1, title=row['科目'], place=row['地点（见习课）'], detail='\n\n'.join('{}：{}'.format(k, v) for k, v in row.items())))
+        self.render_courses(courses)
 
     def on_button_press(self, instance):
-        # 打开课程具体信息
-        additional_info = instance.additional_info
+        title, details = instance.additional_info
+        content = BoxLayout(orientation='vertical', spacing=dp(16), padding=dp(12))
+        scroll = ScrollView()
+        body = label(details, size_hint_y=None, halign='left', valign='top')
+        body.bind(width=lambda w, v: setattr(w, 'text_size', (v, None)), texture_size=lambda w, v: setattr(w, 'height', v[1] + dp(20)))
+        scroll.add_widget(body)
+        content.add_widget(scroll)
+        close = RoundedButton(text='关闭', fill_role='accent', text_role='on_accent', size_hint_y=None, height=dp(44))
+        content.add_widget(close)
+        popup = Popup(title=title, title_font='chinese_font', title_color=theme.color('text'), title_size='19sp', content=content, size_hint=(.9, .75), background='', background_color=(1, 1, 1, 1), separator_color=theme.color('line'))
+        close.bind(on_release=popup.dismiss)
+        popup.open()
 
-        # 创建关闭按钮
-        close_button = Button(text='关闭', font_name="chinese_font", size_hint=(0.1, 0.1), pos_hint={"x": 0.9, "y": 0}, on_press=lambda x: info_popup.dismiss())
-        close_button.background_color=(0,0,0,0)
-        close_button.color=(1,1,1,1)
+    def switch_to_second_screen(self, *args):
+        self.manager.transition = SlideTransition(direction='left')
+        self.manager.current = 'second'
 
-        layout_label=BoxLayout(size_hint=(1,0.9))
-        layout_label.set_color((0,0,0,0))
+    def on_enter(self, *args):
+        if hasattr(self, '_last_date') and self._last_date != datetime.now().date():
+            self._check_day()
+        self._last_date = datetime.now().date()
+        self._day_event = Clock.schedule_interval(self._check_day, 60)
 
-        label = Label(text=additional_info[1],color=(1,1,1,1),font_name="chinese_font",halign='left',valign="top",size_hint=(1,1),font_size="20sp",text_size=(window_width*0.75,None),pos_hint={"x":0,"y":0})
-        label.set_color((1,1,1,0))
-        # 创建包含 Label 和关闭按钮的布局
-        content_layout = BoxLayout(orientation='vertical')
-        content_layout.set_color((0,0, 0,0))
-        layout_label.add_widget(label)
+    def on_leave(self, *args):
+        if hasattr(self, '_day_event'):
+            self._day_event.cancel()
 
-        content_layout.add_widget(layout_label)
-        content_layout.add_widget(close_button)
+    def _check_day(self, *args):
+        if datetime.now().date() != self._last_date:
+            monday = self.start_date - timedelta(days=self.start_date.weekday())
+            old_current = max(1, (self._last_date - monday.date()).days // 7 + 1)
+            follow_current = self.week_number == old_current
+            self._last_date = datetime.now().date()
+            self.updata_button_text_according2week(self.current_week() if follow_current else self.week_number)
 
-        #创建popup
-        info_popup = Popup(title=additional_info[0],
-                           title_size="20sp",
-                        title_font="chinese_font",
-                        content=content_layout,
-                        size_hint=(0.8, 0.7),
-                        background_color=Popup_color_background)
-        info_popup.open()
-
-
-    def get_week_dates(self,target_date):
-        # 将输入的日期字符串转换为 datetime 对象
-        target_datetime = target_date
-        # 获取该天是星期几（0表示星期一，6表示星期日）
-        day_of_week = target_datetime.weekday()
-        # 计算该天到该周第一天的天数差
-        days_since_start_of_week = day_of_week
-        # 计算该周的第一天
-        start_of_week = target_datetime - timedelta(days=days_since_start_of_week)
-        # 获取该周的每天日期
-        week_dates = [start_of_week + timedelta(days=i) for i in range(7)]
-        # 将日期格式化为字符串
-        week_dates_str = [date.strftime("%Y-%m-%d") for date in week_dates]
-        return week_dates_str
-    
-    def refresh(self):
-        try:
-            with open(os.path.join(os.path.dirname(current_file_path),"..","assets", "conf", "cache_data.txt"),"r",encoding='utf-8') as f:
-                self.start_date=datetime.strptime(f.readlines()[0],"%Y-%m-%d")
-                self.week_number = int(((current_date-self.start_date).days+self.start_date.weekday())/7)+1
-        except IOError:
-            self.week_number=1
-        except:
-            print("初始化失败")
-            self.week_number=1
+    def get_week_dates(self, target_date):
+        monday = target_date - timedelta(days=target_date.weekday())
+        return [(monday + timedelta(days=i)).strftime('%Y-%m-%d') for i in range(7)]
