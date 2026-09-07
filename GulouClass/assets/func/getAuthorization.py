@@ -1,22 +1,23 @@
-from . import urllib_request, re, ssl 
+import re
+from urllib.request import Request, urlopen
 
 
 def getAuthorization(url):
-    try:
-        url="https://cloud.seatable.cn/external-apps/42a2a20c-53ee-4817-8caa-2024044c770f/"
-        # 不需要证书
-        context = ssl.create_default_context()
-        context.check_hostname = False
-        context.verify_mode = ssl.CERT_NONE
-        # 创建请求对象
-        with urllib_request.urlopen(url,context=context) as response:
-            data = response.read()
-            raw_html_data=data.decode('utf-8')
-        match = re.search(r"accessToken: '([^']+)'", raw_html_data)
-        if match:
-            access_token = match.group(1)
-            return access_token
-        else:
-            return "Error, can't find authorization"
-    except:
-        return "Authorization获取失败"
+    """Fetch the anonymous access token exposed by a SeaTable external app page."""
+    request = Request(
+        url,
+        headers={
+            "User-Agent": (
+                "Mozilla/5.0 (Windows NT 10.0; Win64; x64) "
+                "AppleWebKit/537.36 (KHTML, like Gecko) "
+                "Chrome/121.0.0.0 Safari/537.36"
+            )
+        },
+    )
+    with urlopen(request, timeout=20) as response:
+        raw_html_data = response.read().decode("utf-8", errors="replace")
+
+    match = re.search(r"accessToken:\s*'([^']+)'", raw_html_data)
+    if not match:
+        raise RuntimeError('无法读取课程页面，请确认分享链接仍然有效且允许公开访问。')
+    return match.group(1)

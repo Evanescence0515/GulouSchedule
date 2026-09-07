@@ -1,88 +1,96 @@
-from . import ScreenManager, Screen, SlideTransition, App, Screen, datetime,\
-    Button, GridLayout, LabelBase, BoxLayout, Label, DropDown,\
-    FileChooserListView, Popup, Window, os, excel2dict
+"""Available tools and current timetable information."""
+from kivy.metrics import dp
+from kivy.graphics import Color, Line, RoundedRectangle
+from kivy.uix.gridlayout import GridLayout
+from kivy.utils import get_color_from_hex
+from kivy.uix.screenmanager import Screen, SlideTransition
+from .page_widgets import page, paragraph
+from .ui_widgets import RoundedButton
+from .theme import THEMES, theme
 
-from . import current_file_path, data_file_path, col_file_path,\
-    chinese_font_path, window_width, window_height, header_color
+
+class ThemeOption(RoundedButton):
+    def __init__(self, key, **kwargs):
+        self.theme_key = key
+        super().__init__(fill_role='surface', font_size='14sp', halign='left', valign='top',
+                         padding=(dp(12), dp(10)), **kwargs)
+        self.bind(pos=self.draw_preview, size=self.draw_preview)
+        theme.bind(name=self.draw_preview)
+        self.draw_preview()
+
+    def draw_preview(self, *args):
+        palette = THEMES[self.theme_key]
+        selected = theme.name == self.theme_key
+        self.text = palette['name'] + (' · 已选' if selected else '')
+        self.text_size = (max(1, self.width - dp(24)), self.height - dp(20))
+        self.canvas.after.clear()
+        with self.canvas.after:
+            Color(*get_color_from_hex(palette['accent']) if selected else theme.color('line'))
+            Line(rounded_rectangle=(self.x + 1, self.y + 1, self.width - 2, self.height - 2, dp(10)), width=1.2)
+            colors = [palette['accent']] + palette['cards'][:4]
+            width = max(dp(4), (self.width - dp(40)) / 5)
+            for index, color in enumerate(colors):
+                Color(*get_color_from_hex(color))
+                RoundedRectangle(pos=(self.x + dp(12) + index * (width + dp(4)), self.y + dp(14)),
+                                 size=(width, dp(18)), radius=[dp(5)])
+
 
 class SecondScreen(Screen):
     def __init__(self, **kwargs):
-        super(SecondScreen, self).__init__(**kwargs)
+        super().__init__(**kwargs)
+        root, body, self.toolbar_button, _ = page('工具', self.switch_to_first_screen)
+        body.add_widget(paragraph('课程管理', '18sp', 'text'))
+        body.add_widget(paragraph('从课程网站获取最新安排，导入后可离线查看。'))
+        action = RoundedButton(text='从网络导入课表  >', fill_role='accent', text_role='on_accent', size_hint_y=None, height=dp(56), font_size='16sp')
+        action.bind(on_release=self.switch_to_third_screen)
+        body.add_widget(action)
+        body.add_widget(paragraph('外观配色', '18sp', 'text'))
+        options = GridLayout(cols=2, spacing=dp(8), size_hint_y=None, height=dp(184))
+        self.theme_options = {}
+        for key in THEMES:
+            option = ThemeOption(key)
+            option.bind(on_release=lambda _, selected=key: self.select_theme(selected))
+            options.add_widget(option)
+            self.theme_options[key] = option
+        body.add_widget(options)
+        self.theme_description = paragraph(THEMES[theme.name]['description'], '12sp')
+        body.add_widget(self.theme_description)
+        body.add_widget(paragraph('当前课表', '18sp', 'text'))
+        self.status = paragraph('正在读取课表…')
+        body.add_widget(self.status)
+        body.add_widget(paragraph('字体声明', '18sp', 'text'))
+        body.add_widget(paragraph('本应用使用 MiSans 字体。\n字体版权归小米所有，按 MiSans 字体许可协议使用。', '12sp'))
+        self.add_widget(root)
 
-        root_layout = BoxLayout(orientation='vertical')
-        # 一级分屏
-        layPart1 = BoxLayout(orientation='horizontal', size_hint=(1, 0.08),pos_hint={'x':0,'y':0.9})
-        layPart2 = BoxLayout(orientation='horizontal', size_hint=(1, 0.1),pos_hint={'x':0,'y':0.8})
-        layPart3 = BoxLayout(orientation='horizontal', size_hint=(1,0.1), pos_hint={'x':0,'y':0.7})
-        layPartn = BoxLayout(orientation='horizontal', size_hint=(1, 0.7),pos_hint={'x':0,'y':0})# 空白layout
-        # 二级分屏1.0
-        layPart1_0=BoxLayout(orientation='vertical', size_hint=(0.1,1),pos_hint={'x':0,'y':0})
-        layPart1_0.set_color(header_color)
-        btn = Button(text="Back",size_hint=(0.15, 1))
-        btn.background_color=header_color
-        btn.color=(1,1,1,1)
-        btn.bind(on_press=self.switch_to_first_screen)
-        layPart1_0.add_widget(btn)
-        layPart1.add_widget(layPart1_0)
-        # 二级分屏2.0
-        import_button = Button(text="以Excel文件格式导入(已停用)", size_hint=(1, 1),font_name='chinese_font')
-        import_button.bind(on_press=self.show_file_chooser)
-        layPart2.add_widget(import_button)
-        # 二级分屏3.0
-        import_from_internet_button=Button(text="从网络导入", size_hint=(1, 1),font_name='chinese_font')
-        import_from_internet_button.bind(on_press=self.switch_to_third_screen)
-        layPart3.add_widget(import_from_internet_button)
-        root_layout.add_widget(layPart1)
-        root_layout.add_widget(layPart2)
-        root_layout.add_widget(layPart3)
-        root_layout.add_widget(layPartn)
+    def select_theme(self, key):
+        try:
+            theme.select(key)
+        except OSError:
+            self.theme_description.color_role = 'error'
+            self.theme_description.text = '配色保存失败，请检查目录写入权限。'
+            return
+        self.theme_description.color_role = 'muted'
+        self.theme_description.text = THEMES[key]['description']
 
+    def on_pre_enter(self, *args):
+        home = self.manager.get_screen('first')
+        snapshot = home.snapshot
+        if snapshot:
+            info = snapshot.get('preferences', {})
+            self.status.text = '{} · {}\n\n{} 条课程安排 · {} 个教学周\n\n最近导入：{}'.format(
+                info.get('university', ''), info.get('grade', ''), snapshot.get('course_count', 0),
+                len(snapshot['weeks']), snapshot.get('updated_at', '未知'))
+        elif home.has_calendar:
+            self.status.text = '已有本地课表，可离线查看。\n\n课程起始日期：{}\n\n选择“从网络导入课表”更新安排。'.format(home.start_date.strftime('%Y-%m-%d'))
+        else:
+            self.status.text = '尚未导入课表。\n\n准备好课程分享链接、学校和班级，即可开始导入。'
+        if home.cache_error:
+            self.status.text += '\n\n新课表缓存异常，请重新导入。'
 
+    def switch_to_third_screen(self, *args):
+        self.manager.transition = SlideTransition(direction='left')
+        self.manager.current = 'third'
 
-
-        self.add_widget(root_layout)
-
-
-    def show_file_chooser(self, instance):#文件选择器(已荒废)
-        # 弹出文件选择器
-        file_chooser = FileChooserListView()
-        file_chooser.bind(on_submit=self.import_excel_file)
-
-        self.popup = Popup(title="Choose Excel File",content=file_chooser, size_hint=(0.9, 0.9))
-        self.popup.content.font_name = 'chinese_font' 
-        self.popup.open()
-        
-
-    def import_excel_file(self, instance, value, *args):#导入excel文件(目前已被荒废)
-        # 在这里调用excel2dict函数，并传递文件路径
-        file_path = value[0]
-        self.result_dict = excel2dict(file_path)
-
-        # 更新屏幕信息
-        self.update_screen(self.result_dict)
-
-        #消除popup后在转换位第一屏幕
-        self.popup.dismiss()
-        App.get_running_app().root.current = 'first'
-
-
-    def update_screen(self, data_dict):
-        # 根据返回的字典更新屏幕信息
-        # 获取 Screen1 并调用更新按钮文本的方法
-        screen1 = self.manager.get_screen('first')
-        screen1.update_buttons_text(data_dict)
-
-    def switch_to_third_screen(self, instance):
-        # 获取屏幕管理器
-        screen_manager = App.get_running_app().root
-        self.manager.transition = SlideTransition(direction="left")
-        # 切换到第一个屏幕
-        screen_manager.current = 'third'
-
-
-    def switch_to_first_screen(self, instance):
-        # 获取屏幕管理器
-        screen_manager = App.get_running_app().root
-        self.manager.transition = SlideTransition(direction="right")
-        # 切换到第一个屏幕
-        screen_manager.current = 'first'
+    def switch_to_first_screen(self, *args):
+        self.manager.transition = SlideTransition(direction='right')
+        self.manager.current = 'first'

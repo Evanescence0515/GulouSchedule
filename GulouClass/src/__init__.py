@@ -23,7 +23,7 @@ import os
 # 获取当前脚本文件的绝对路径
 current_file_path = os.path.abspath(__file__)
 data_file_path = os.path.join(os.path.dirname(current_file_path),"..","assets", "conf", "data.txt")
-chinese_font_path = os.path.join(os.path.dirname(current_file_path),"..","assets", "font", "SIMHEI.TTF")
+chinese_font_path = os.path.join(os.path.dirname(current_file_path),"..","assets", "font", "MiSans-Regular.ttf")
 col_file_path = os.path.join(os.path.dirname(current_file_path),"..","assets", "conf", "color.txt")
 
 
